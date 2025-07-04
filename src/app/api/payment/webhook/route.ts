@@ -170,33 +170,44 @@ export async function POST(request: NextRequest) {
 
     // Process payment based on status code
     // WebX Pay uses status codes: '00' = success, other codes = failure
+    let paymentResult: { success: boolean; message: string; };
+    
     switch (webhookData.status_code) {
       case '00':
         await handleSuccessfulPayment(webhookData);
+        paymentResult = { 
+          success: true, 
+          message: 'Payment processed successfully' 
+        };
         break;
         
       default:
         await handleFailedPayment(webhookData);
+        paymentResult = { 
+          success: false, 
+          message: `Payment failed with status code: ${webhookData.status_code}` 
+        };
         break;
     }
 
-    // Return success response to WebX Pay
+    // Return response based on payment status
     const response = { 
-      success: true, 
-      message: 'Webhook processed successfully',
+      success: paymentResult.success,
+      message: paymentResult.message,
       order_id: webhookData.order_id,
       status_code: webhookData.status_code,
       reference_number: webhookData.order_refference_number,
       timestamp: new Date().toISOString()
     };
     
-    logger.info('Webhook processing completed successfully', {
+    logger.info(`Webhook processing completed: ${paymentResult.success ? 'SUCCESS' : 'FAILED'}`, {
       orderId: webhookData.order_id,
-      statusCode: webhookData.status_code
+      statusCode: webhookData.status_code,
+      paymentSuccess: paymentResult.success
     });
     
-    return NextResponse.json(response);
-    
+    return NextResponse.json(response, { status:  200  });
+
   } catch (error) {
     logger.webhookProcessingError(error as Error, rawBody);
     

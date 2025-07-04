@@ -44,7 +44,7 @@ export default function Payment() {
     cms: 'Next.js',
     customFields: '',
     encMethod: 'JCs3J+6oSz4V0LgE0zi/Bg==',
-    amount: 1000, // Default amount in cents (10.00)
+    amount: 100, // Default amount in cents (10.00)
     description: 'Payment for services'
   });
 
@@ -285,7 +285,7 @@ export default function Payment() {
                   required
                 />
                 <small className={styles.helpText}>
-                  Amount in cents (e.g., 1000 = {formData.processCurrency} 10.00)
+                  Amount in cents (e.g., 100 = {formData.processCurrency} 10.00)
                 </small>
               </div>
               <div className={styles.formGroup}>

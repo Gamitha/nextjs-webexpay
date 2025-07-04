@@ -2,28 +2,79 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { logger, PerformanceTimer, withLogging } from '@/lib/logger';
 
+// Validate required environment variables
+function validateEnvironmentVariables(): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const requiredEnvVars = {
+    WEBX_PAY_CHECKOUT_URL: process.env.WEBX_PAY_CHECKOUT_URL,
+    WEBX_PAY_SECRET_KEY: process.env.WEBX_PAY_SECRET_KEY,
+    WEBX_PAY_PUBLIC_KEY: process.env.WEBX_PAY_PUBLIC_KEY,
+    WEBX_PAY_ENC_METHOD: process.env.WEBX_PAY_ENC_METHOD,
+    NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL
+  };
+
+  // Check for missing environment variables
+  Object.entries(requiredEnvVars).forEach(([key, value]) => {
+    if (!value || value.trim().length === 0) {
+      errors.push(`Missing required environment variable: ${key}`);
+    }
+  });
+
+  // Validate URL format for checkout URL
+  if (requiredEnvVars.WEBX_PAY_CHECKOUT_URL) {
+    try {
+      new URL(requiredEnvVars.WEBX_PAY_CHECKOUT_URL);
+    } catch {
+      errors.push('WEBX_PAY_CHECKOUT_URL must be a valid URL');
+    }
+  }
+
+  // Validate URL format for base URL
+  if (requiredEnvVars.NEXT_PUBLIC_BASE_URL) {
+    try {
+      new URL(requiredEnvVars.NEXT_PUBLIC_BASE_URL);
+    } catch {
+      errors.push('NEXT_PUBLIC_BASE_URL must be a valid URL');
+    }
+  }
+
+  // Validate RSA public key format
+  if (requiredEnvVars.WEBX_PAY_PUBLIC_KEY) {
+    if (!requiredEnvVars.WEBX_PAY_PUBLIC_KEY.includes('BEGIN PUBLIC KEY') || 
+        !requiredEnvVars.WEBX_PAY_PUBLIC_KEY.includes('END PUBLIC KEY')) {
+      errors.push('WEBX_PAY_PUBLIC_KEY must be a valid RSA public key');
+    }
+  }
+
+  // Validate secret key length
+  if (requiredEnvVars.WEBX_PAY_SECRET_KEY && requiredEnvVars.WEBX_PAY_SECRET_KEY.length < 10) {
+    errors.push('WEBX_PAY_SECRET_KEY must be at least 10 characters long');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
 // WebX Pay configuration - Based on original PHP implementation
+// Non-null assertions are safe here because we validate environment variables before use
 const WEBX_PAY_CONFIG = {
   // Production URL - change to sandbox URL for testing
-  checkoutUrl: 'https://stagingxpay.info/index.php?route=checkout/billing',
+  checkoutUrl: process.env.WEBX_PAY_CHECKOUT_URL!,
   
   // WebX Pay credentials from original PHP code
-  secretKey: 'b7b682c3-3640-424d-b1ea-e600cda8e1a6',
+  secretKey: process.env.WEBX_PAY_SECRET_KEY!,
   
   // WebX Pay RSA Public Key for encryption (from original PHP)
-  publicKey: `-----BEGIN PUBLIC KEY-----
-MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCxEpnv0K4RvjPn5t5B5T3ikHnZ
-0rugXpFHk8HbuPnbh33TZnw6Ny4vojKnPbkafw8NLXPZwYtt8lApCOUzPcob9anZ
-GkD4WFlsJ8pp5/rmvfZ0zNGsvaxnDoiOylq6Dyai4SsRKpfn3EnqDDE8JTSE36eB
-UYDeURgL1lCi5XuhkQIDAQAB
------END PUBLIC KEY-----`,
+  publicKey: process.env.WEBX_PAY_PUBLIC_KEY!,
   
   // Encryption method identifier (from original PHP)
-  encMethod: 'JCs3J+6oSz4V0LgE0zi/Bg==',
+  encMethod: process.env.WEBX_PAY_ENC_METHOD!,
   
   // Success and failure URLs - update these to your actual URLs
-  successUrl: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001',
-  failureUrl: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001',
+  successUrl: process.env.NEXT_PUBLIC_BASE_URL!,
+  failureUrl: process.env.NEXT_PUBLIC_BASE_URL!,
   
   // Currency codes supported by WebX Pay
   supportedCurrencies: ['LKR', 'USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD']
@@ -175,6 +226,27 @@ export async function POST(request: NextRequest) {
   const timer = new PerformanceTimer('payment_processing');
   
   try {
+    // Validate environment variables first
+    const envValidation = validateEnvironmentVariables();
+    if (!envValidation.isValid) {
+      logger.error('Environment validation failed', new Error('Missing required environment variables'), {
+        errors: envValidation.errors
+      });
+      
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Server configuration error',
+          message: 'Payment service is not properly configured. Please contact support.',
+          // Only include detailed errors in development
+          ...(process.env.NODE_ENV === 'development' && { 
+            configurationErrors: envValidation.errors 
+          })
+        },
+        { status: 500 }
+      );
+    }
+
     const formData: PaymentData = await request.json();
     
     // Log payment initiation
@@ -294,6 +366,9 @@ export async function POST(request: NextRequest) {
       encryptedPaymentLength: encryptedPayment.length
     });
     
+    // TODO: insert payment data into database here if needed
+ 
+
     return NextResponse.json(paymentResponse);
     
   } catch (error) {
