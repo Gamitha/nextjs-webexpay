@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { logger, PerformanceTimer, withLogging } from '@/lib/logger';
 
 // WebX Pay configuration - Based on original PHP implementation
 const WEBX_PAY_CONFIG = {
@@ -81,6 +82,11 @@ function generateOrderId(): string {
 // Encrypt payment data using RSA public key (as per original PHP implementation)
 function encryptPaymentData(plaintext: string, publicKey: string): string {
   try {
+    logger.debug('Starting payment data encryption', {
+      plaintextLength: plaintext.length,
+      publicKeyLength: publicKey.length
+    });
+    
     const buffer = Buffer.from(plaintext, 'utf8');
     const encrypted = crypto.publicEncrypt(
       {
@@ -90,10 +96,19 @@ function encryptPaymentData(plaintext: string, publicKey: string): string {
       buffer
     );
     
-    return encrypted.toString('base64');
+    const encryptedBase64 = encrypted.toString('base64');
+    
+    logger.debug('Payment data encryption completed', {
+      encryptedLength: encryptedBase64.length
+    });
+    
+    return encryptedBase64;
   } catch (error) {
-    console.error('Encryption error:', error);
-    throw new Error('Failed to encrypt payment data');
+    logger.error('Payment data encryption failed', error as Error, {
+      plaintextLength: plaintext.length,
+      publicKeyLength: publicKey.length
+    });
+    throw new Error(`Failed to encrypt payment data: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -157,12 +172,28 @@ function validatePaymentData(formData: PaymentData): { isValid: boolean; errors:
 }
 
 export async function POST(request: NextRequest) {
+  const timer = new PerformanceTimer('payment_processing');
+  
   try {
     const formData: PaymentData = await request.json();
+    
+    // Log payment initiation
+    logger.paymentInitiated(
+      formData.orderId || 'pending',
+      formData.amount,
+      formData.processCurrency,
+      request
+    );
     
     // Validate payment data
     const validation = validatePaymentData(formData);
     if (!validation.isValid) {
+      logger.validationError(
+        'Payment validation failed',
+        validation.errors,
+        request
+      );
+      
       return NextResponse.json(
         { 
           success: false, 
@@ -177,20 +208,31 @@ export async function POST(request: NextRequest) {
     // Generate unique order ID (as per original PHP)
     const orderId = formData.orderId || generateOrderId();
     
-    // Prepare plaintext for encryption: unique_order_id|total_amount (original PHP format)
-    const plaintext = `${orderId}|${formData.amount}`;
-    
-    console.log('Processing WebX Pay payment:', {
+    // Log order ID generation
+    logger.info('Order ID generated', {
       orderId,
       amount: formData.amount,
       currency: formData.processCurrency,
-      customer: `${formData.firstName} ${formData.lastName}`,
-      email: formData.email,
-      plaintext: plaintext
+      customerEmail: formData.email
     });
     
-    // Encrypt payment data using RSA public key (exactly like original PHP)
-    const encryptedPayment = encryptPaymentData(plaintext, WEBX_PAY_CONFIG.publicKey);
+    // Prepare plaintext for encryption: unique_order_id|total_amount (original PHP format)
+    const plaintext = `${orderId}|${formData.amount}`;
+    
+    // Encrypt payment data using RSA public key with logging
+    const encryptedPayment = await withLogging(
+      'payment_encryption',
+      async () => encryptPaymentData(plaintext, WEBX_PAY_CONFIG.publicKey),
+      { orderId, plaintextLength: plaintext.length }
+    );
+    
+    // Log successful encryption
+    logger.paymentDataPrepared(
+      orderId,
+      formData.amount,
+      formData.processCurrency,
+      encryptedPayment.length
+    );
     
     // Prepare custom fields (exactly like original PHP)
     const customFields = prepareCustomFields(formData);
@@ -220,16 +262,8 @@ export async function POST(request: NextRequest) {
       notify_url: `${WEBX_PAY_CONFIG.successUrl}/api/payment/webhook`
     };
     
-    console.log('WebX Pay form data prepared:', {
-      order_id: orderId,
-      amount: formData.amount,
-      currency: formData.processCurrency,
-      encrypted_payment_length: encryptedPayment.length,
-      custom_fields_length: customFields.length,
-      secret_key: WEBX_PAY_CONFIG.secretKey,
-      enc_method: WEBX_PAY_CONFIG.encMethod,
-      checkout_url: WEBX_PAY_CONFIG.checkoutUrl
-    });
+    // Log payment redirect
+    logger.paymentRedirect(orderId, WEBX_PAY_CONFIG.checkoutUrl);
     
     const paymentResponse = {
       success: true,
@@ -251,10 +285,27 @@ export async function POST(request: NextRequest) {
       webxPayUrl: WEBX_PAY_CONFIG.checkoutUrl
     };
     
+    // Log successful payment preparation
+    logger.audit('Payment preparation completed', {
+      orderId,
+      amount: formData.amount,
+      currency: formData.processCurrency,
+      customerEmail: formData.email,
+      encryptedPaymentLength: encryptedPayment.length
+    });
+    
     return NextResponse.json(paymentResponse);
     
   } catch (error) {
-    console.error('Payment processing error:', error);
+    logger.error('Payment processing failed', error as Error, {
+      url: request.url,
+      method: request.method
+    });
+    
+    // Log encryption specific errors
+    if (error instanceof Error && error.message.includes('encrypt')) {
+      logger.encryptionError('unknown', error as Error);
+    }
     
     return NextResponse.json(
       { 
@@ -264,6 +315,8 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  } finally {
+    timer.end();
   }
 }
 

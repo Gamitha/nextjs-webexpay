@@ -1,24 +1,40 @@
-# WebX Pay Integration - Complete Implementation
+# WebX Pay Integration - Production-Ready Implementation
 
-This project implements a complete WebX Pay integration based on the official WebX Pay integration guide V2.7, following best practices and security standards.
+This project implements a complete WebX Pay integration based on the official WebX Pay integration guide V2.7, with production-grade logging, monitoring, and security features.
 
 ## 🚀 Features
 
 ### 1. **Official WebX Pay Implementation**
 - ✅ **Standard Form Fields**: All required WebX Pay fields implemented
-- ✅ **Hash Authentication**: MD5 hash verification for security
-- ✅ **RSA Encryption**: Backward compatible with legacy encryption
-- ✅ **Webhook Support**: Real-time payment status updates
+- ✅ **RSA Encryption**: Secure payment data encryption
+- ✅ **Webhook Support**: Real-time payment status updates with proper parsing
 - ✅ **Multi-Currency**: Support for LKR, USD, EUR, GBP, INR, AUD, CAD
+- ✅ **Status Code Handling**: Proper WebX Pay status code processing
 
-### 2. **Security Features**
-- ✅ **Hash Verification**: Prevents tampering with payment data
-- ✅ **Webhook Validation**: Verifies incoming webhook authenticity
+### 2. **Production-Grade Logging**
+- ✅ **Structured Logging**: JSON-formatted logs with contextual information
+- ✅ **Multiple Log Levels**: DEBUG, INFO, WARN, ERROR, SECURITY, AUDIT
+- ✅ **Payment Audit Trail**: Complete transaction logging for compliance
+- ✅ **Performance Metrics**: Request timing and performance monitoring
+- ✅ **Error Tracking**: Detailed error logging with stack traces
+- ✅ **Security Logging**: Security event detection and alerting
+- ✅ **Data Sanitization**: Automatic PII and sensitive data masking
+
+### 3. **Security Features**
+- ✅ **Data Encryption**: RSA encryption for payment data
 - ✅ **Input Validation**: Comprehensive form validation
 - ✅ **Environment Variables**: Secure credential management
-- ✅ **Error Handling**: Comprehensive error handling and logging
+- ✅ **Error Handling**: Secure error handling without data exposure
+- ✅ **PII Protection**: GDPR-compliant data handling and masking
 
-### 3. **Modern UI/UX**
+### 4. **Monitoring & Health Checks**
+- ✅ **Health Check API**: System health monitoring endpoint
+- ✅ **Performance Monitoring**: Request timing and performance metrics
+- ✅ **Webhook Monitoring**: Webhook processing status and metrics
+- ✅ **Encryption Service Check**: RSA encryption service validation
+- ✅ **Connectivity Tests**: WebX Pay endpoint connectivity checks
+
+### 5. **Modern UI/UX**
 - ✅ **Responsive Design**: Works on all device sizes
 - ✅ **Loading States**: Visual feedback during processing
 - ✅ **Success/Failure Pages**: Clear payment status indication
@@ -284,3 +300,95 @@ const encryptedPayment = encryptPaymentData(plaintext, publicKey);
 4. **Rate Limiting**: Add rate limiting to prevent abuse
 5. **Input Sanitization**: Sanitize all user inputs
 6. **Payment Gateway Testing**: Test with WebX Pay in sandbox mode before going live
+
+## 📊 Production Logging Features
+
+### Log Levels and Types
+```typescript
+export enum LogLevel {
+  DEBUG = 'debug',      // Development debugging information
+  INFO = 'info',        // General application information
+  WARN = 'warn',        // Warning conditions
+  ERROR = 'error',      // Error conditions
+  SECURITY = 'security', // Security-related events
+  AUDIT = 'audit'       // Audit trail for compliance
+}
+```
+
+### Payment-Specific Logging
+- **Payment Initiation**: Logs when payment process starts
+- **Data Preparation**: RSA encryption and data preparation logs
+- **Payment Redirect**: WebX Pay redirect logging
+- **Webhook Reception**: Incoming webhook processing logs
+- **Payment Success/Failure**: Final payment status logging
+- **Performance Metrics**: Request timing and performance data
+
+### Log Structure
+All logs follow a structured JSON format:
+```json
+{
+  "level": "audit",
+  "message": "Payment completed successfully",
+  "context": {
+    "orderId": "1751609138548",
+    "referenceNumber": "T476992025I04",
+    "amount": "100.00",
+    "currency": "LKR",
+    "action": "payment_success"
+  },
+  "timestamp": "2025-07-04T06:06:21.000Z",
+  "service": "webx-pay-integration",
+  "version": "1.0.0",
+  "environment": "production"
+}
+```
+
+### Data Sanitization
+- **Payment Data**: Encrypted payment strings are truncated
+- **Personal Information**: Email and phone numbers are masked
+- **Signatures**: Only last 8 characters shown
+- **Secret Keys**: Completely redacted
+
+### Usage Examples
+```typescript
+import { logger } from '@/lib/logger';
+
+// Payment processing
+logger.paymentInitiated(orderId, amount, currency, request);
+logger.paymentDataPrepared(orderId, amount, currency, encryptedLength);
+logger.paymentSuccess(orderId, referenceNumber, amount);
+
+// Error handling
+logger.error('Payment processing failed', error, { orderId });
+logger.securityAlert('Suspicious payment attempt', { ipAddress });
+
+// Performance monitoring
+const timer = new PerformanceTimer('payment_encryption');
+// ... perform operation
+timer.end();
+```
+
+## 🔍 Monitoring & Health Checks
+
+### Health Check Endpoint
+**GET** `/api/monitoring` - System health status
+```json
+{
+  "status": "healthy",
+  "checks": {
+    "webxPayEndpoint": "healthy",
+    "databaseConnection": "healthy", 
+    "webhookEndpoint": "available",
+    "encryptionService": "healthy"
+  },
+  "uptime": 3600,
+  "version": "1.0.0"
+}
+```
+
+### Monitoring Dashboard
+**GET** `/api/monitoring?timeframe=24h&level=info`
+- Payment volume and success rates
+- Performance metrics
+- Error rates and trends
+- System health indicators
