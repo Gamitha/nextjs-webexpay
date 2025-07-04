@@ -29,6 +29,7 @@ This project implements a complete WebX Pay integration based on the official We
 
 ### 4. **Monitoring & Health Checks**
 - ✅ **Health Check API**: System health monitoring endpoint
+- ✅ **Environment Validation**: Startup validation of all required configuration
 - ✅ **Performance Monitoring**: Request timing and performance metrics
 - ✅ **Webhook Monitoring**: Webhook processing status and metrics
 - ✅ **Encryption Service Check**: RSA encryption service validation
@@ -41,7 +42,25 @@ This project implements a complete WebX Pay integration based on the official We
 - ✅ **Dark Mode Support**: Automatic theme adaptation
 - ✅ **Accessibility**: WCAG compliant form elements
 
-## 📋 WebX Pay Form Fields
+## 📋 WebX Pay Integration Features
+
+### Core Implementation
+- **Environment Validation**: Comprehensive validation of all required environment variables
+- **RSA Encryption**: Secure payment data encryption using WebX Pay's public key
+- **Webhook Processing**: Real-time payment status updates with proper status code handling
+- **Multi-Currency Support**: Support for LKR, USD, EUR, GBP, INR, AUD, CAD
+- **Status Code Processing**: Proper handling of WebX Pay status codes ('00' = success, others = failure)
+- **Form Data Validation**: Comprehensive client and server-side validation
+- **Custom Fields Encoding**: Base64 encoding of custom fields as per WebX Pay specification
+
+### Required Environment Variables
+- `WEBX_PAY_CHECKOUT_URL` - WebX Pay checkout endpoint URL
+- `WEBX_PAY_SECRET_KEY` - WebX Pay secret key for authentication
+- `WEBX_PAY_PUBLIC_KEY` - RSA public key for payment data encryption
+- `WEBX_PAY_ENC_METHOD` - Encryption method identifier
+- `NEXT_PUBLIC_BASE_URL` - Application base URL for redirects
+
+### WebX Pay Form Fields
 
 ### Required Fields
 - `merchant_id` - Your WebX Pay merchant ID
@@ -72,25 +91,55 @@ This project implements a complete WebX Pay integration based on the official We
 Create a `.env.local` file with your WebX Pay credentials:
 
 ```env
-WEBX_MERCHANT_ID=your_merchant_id_here
-WEBX_SECRET_KEY=your_secret_key_here
-WEBX_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
-...your_public_key_here...
+# WebX Pay Configuration
+WEBX_PAY_CHECKOUT_URL=https://webxpay.com/index.php?route=checkout/billing
+WEBX_PAY_SECRET_KEY=630be963-59e2-447a-8f3b-93b3d7a3bf25
+WEBX_PAY_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC9l2HykxDIDVZeyDPJU4pA0imf
+3nWsvyJgb3zTsnN8B0mFX6u5squ5NQcnQ03L8uQ56b4/isHBgiyKwfMr4cpEpCTY
+/t1WSdJ5EokCI/F7hCM7aSSSY85S7IYOiC6pKR4WbaOYMvAMKn5gCobEPtosmPLz
+gh8Lo3b8UsjPq2W26QIDAQAB
 -----END PUBLIC KEY-----"
+WEBX_PAY_ENC_METHOD=JCs3J+6oSz4V0LgE0zi/Bg==
+
+# Application Configuration
 NEXT_PUBLIC_BASE_URL=http://localhost:3001
-WEBX_CHECKOUT_URL=https://webxpay.com/index.php?route=checkout/billing
+```
+
+### Environment Variable Validation
+The application includes comprehensive environment variable validation to ensure all required WebX Pay configuration is present:
+
+```typescript
+function validateEnvironmentVariables(): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const requiredEnvVars = {
+    WEBX_PAY_CHECKOUT_URL: process.env.WEBX_PAY_CHECKOUT_URL,
+    WEBX_PAY_SECRET_KEY: process.env.WEBX_PAY_SECRET_KEY,
+    WEBX_PAY_PUBLIC_KEY: process.env.WEBX_PAY_PUBLIC_KEY,
+    WEBX_PAY_ENC_METHOD: process.env.WEBX_PAY_ENC_METHOD,
+    NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL
+  };
+
+  // Validates:
+  // ✅ All required variables are present
+  // ✅ URL format validation for checkout and base URLs
+  // ✅ RSA public key format validation
+  // ✅ Secret key minimum length requirements
+  
+  return { isValid: errors.length === 0, errors };
+}
 ```
 
 ### WebX Pay Settings
 ```typescript
 const WEBX_PAY_CONFIG = {
-  merchantId: process.env.WEBX_MERCHANT_ID,
-  secretKey: process.env.WEBX_SECRET_KEY,
-  publicKey: process.env.WEBX_PUBLIC_KEY,
-  checkoutUrl: process.env.WEBX_CHECKOUT_URL,
-  successUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/payment-success`,
-  failureUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/payment-failure`,
-  notifyUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/api/payment/webhook`
+  checkoutUrl: process.env.WEBX_PAY_CHECKOUT_URL!,
+  secretKey: process.env.WEBX_PAY_SECRET_KEY!,
+  publicKey: process.env.WEBX_PAY_PUBLIC_KEY!,
+  encMethod: process.env.WEBX_PAY_ENC_METHOD!,
+  successUrl: process.env.NEXT_PUBLIC_BASE_URL!,
+  failureUrl: process.env.NEXT_PUBLIC_BASE_URL!,
+  supportedCurrencies: ['LKR', 'USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD']
 };
 ```
 
@@ -98,34 +147,90 @@ const WEBX_PAY_CONFIG = {
 
 ### Payment Processing Flow
 1. **Customer submits payment form** → `/payment`
-2. **Server validates and prepares data** → `/api/payment`
-3. **Redirect to WebX Pay** → `/webx-pay-redirect`
-4. **Customer completes payment** → WebX Pay checkout
-5. **WebX Pay sends webhook** → `/api/payment/webhook`
-6. **Customer redirected back** → `/payment-success` or `/payment-failure`
+2. **Server validates environment variables** → Environment validation
+3. **Server validates and prepares data** → `/api/payment`
+4. **Redirect to WebX Pay** → WebX Pay checkout
+5. **Customer completes payment** → WebX Pay processing
+6. **WebX Pay sends webhook** → `/api/payment/webhook`
+7. **Customer redirected back** → `/payment-success` or `/payment-failure`
 
-### Hash Generation
-Following WebX Pay specification:
+### Environment Variable Validation
+Before processing any payment, the system validates all required environment variables:
+
 ```typescript
-function createWebXPayHash(data: WebXPayFormData, secretKey: string): string {
-  const hashString = `${data.merchant_id}${data.order_id}${data.amount}${data.currency}${secretKey}`;
-  return crypto.createHash('md5').update(hashString).digest('hex').toUpperCase();
+// Automatic validation on startup
+const envValidation = validateEnvironmentVariables();
+if (!envValidation.isValid) {
+  logger.error('Environment validation failed', new Error('Missing required environment variables'), {
+    errors: envValidation.errors,
+    action: 'environment_validation'
+  });
+  
+  return NextResponse.json({
+    success: false,
+    message: 'Server configuration error',
+    errors: envValidation.errors
+  }, { status: 500 });
 }
 ```
 
-### Webhook Verification
+### Payment Data Encryption
+Following WebX Pay specification with RSA encryption:
+
 ```typescript
-function verifyWebhookHash(data: WebXPayWebhookData, secretKey: string): boolean {
-  const hashString = `${data.merchant_id}${data.order_id}${data.amount}${data.currency}${data.status}${secretKey}`;
-  const expectedHash = crypto.createHash('md5').update(hashString).digest('hex').toUpperCase();
-  return expectedHash === data.hash;
+function encryptPaymentData(plaintext: string, publicKey: string): string {
+  const buffer = Buffer.from(plaintext, 'utf8');
+  const encrypted = crypto.publicEncrypt(
+    {
+      key: publicKey,
+      padding: crypto.constants.RSA_PKCS1_PADDING
+    },
+    buffer
+  );
+  
+  return encrypted.toString('base64');
+}
+
+// Usage: orderId|amount format
+const plaintext = `${orderId}|${amount}`;
+const encryptedPayment = encryptPaymentData(plaintext, WEBX_PAY_CONFIG.publicKey);
+```
+
+### Webhook Processing
+The webhook endpoint processes WebX Pay notifications with proper status handling:
+
+```typescript
+// WebX Pay uses status codes: '00' = success, other codes = failure
+switch (webhookData.status_code) {
+  case '00':
+    await handleSuccessfulPayment(webhookData);
+    response = { success: true, message: 'Payment processed successfully' };
+    break;
+    
+  default:
+    await handleFailedPayment(webhookData);
+    response = { success: false, message: `Payment failed with status code: ${webhookData.status_code}` };
+    break;
 }
 ```
 
 ## API Endpoints
 
 ### POST /api/payment
-Processes payment data and prepares it for WebX Pay integration.
+Processes payment data and prepares it for WebX Pay integration with full environment validation.
+
+**Environment Validation Response (if validation fails):**
+```json
+{
+  "success": false,
+  "message": "Server configuration error",
+  "errors": [
+    "Missing required environment variable: WEBX_PAY_SECRET_KEY",
+    "WEBX_PAY_CHECKOUT_URL must be a valid URL",
+    "WEBX_PAY_PUBLIC_KEY must be a valid RSA public key"
+  ]
+}
+```
 
 **Request Body:**
 ```json
@@ -147,11 +252,11 @@ Processes payment data and prepares it for WebX Pay integration.
 }
 ```
 
-**Response:**
+**Success Response:**
 ```json
 {
   "success": true,
-  "orderId": "ORDER_1704456789123_abc123def",
+  "orderId": "1751644419465",
   "amount": 1000,
   "currency": "LKR",
   "checkoutUrl": "https://webxpay.com/index.php?route=checkout/billing",
@@ -175,8 +280,68 @@ Processes payment data and prepares it for WebX Pay integration.
     "secret_key": "630be963-59e2-447a-8f3b-93b3d7a3bf25",
     "payment": "encrypted_payment_data_here"
   },
-  "encryptedPayment": "encrypted_payment_data_here",
   "message": "Payment data prepared successfully"
+}
+```
+
+### POST /api/payment/webhook
+Handles WebX Pay webhook notifications with proper status code processing.
+
+**WebX Pay Webhook Data:**
+```json
+{
+  "order_id": "1751644419465",
+  "order_refference_number": "T476992025I04",
+  "status_code": "00",
+  "transaction_amount": "1000.00",
+  "requested_amount": "1000.00",
+  "payment": "base64_encoded_payment_data",
+  "custom_fields": "base64_encoded_custom_fields",
+  "signature": "webhook_signature"
+}
+```
+
+**Success Response (status_code: "00"):**
+```json
+{
+  "success": true,
+  "message": "Payment processed successfully",
+  "order_id": "1751644419465",
+  "status_code": "00",
+  "reference_number": "T476992025I04",
+  "timestamp": "2025-07-04T15:54:49.515Z"
+}
+```
+
+**Failure Response (status_code: other than "00"):**
+```json
+{
+  "success": false,
+  "message": "Payment failed with status code: 01",
+  "order_id": "1751644419465",
+  "status_code": "01",
+  "reference_number": "T476992025I04",
+  "timestamp": "2025-07-04T15:54:49.515Z"
+}
+```
+
+### GET /api/payment/webhook
+Handles webhook verification and health checks.
+
+**Webhook Verification (with challenge parameter):**
+```json
+{
+  "challenge": "verification_challenge_string"
+}
+```
+
+**Health Check Response:**
+```json
+{
+  "message": "WebX Pay webhook endpoint",
+  "timestamp": "2025-07-04T15:54:49.515Z",
+  "status": "healthy",
+  "version": "1.0.0"
 }
 ```
 
@@ -259,11 +424,58 @@ const encryptedPayment = encryptPaymentData(plaintext, publicKey);
 
 ## Security Considerations
 
-1. **Public Key Security**: The RSA public key is embedded in the frontend code
-2. **Secret Key**: The secret key should be stored securely (consider environment variables)
-3. **HTTPS**: Always use HTTPS in production
-4. **Input Validation**: Server-side validation of all form inputs
-5. **Error Handling**: Comprehensive error handling without exposing sensitive information
+1. **Environment Variables**: All sensitive keys are stored in environment variables with validation
+2. **RSA Encryption**: Payment data is encrypted using WebX Pay's RSA public key
+3. **Input Validation**: Comprehensive server-side validation of all form inputs
+4. **Error Handling**: Secure error handling without exposing sensitive information
+5. **HTTPS**: Always use HTTPS in production environments
+6. **Data Sanitization**: Automatic PII masking in logs and error responses
+7. **Webhook Security**: Proper webhook signature verification and data parsing
+8. **Environment Validation**: Startup validation prevents deployment with missing configuration
+
+## Error Handling
+
+### Environment Configuration Errors
+The application validates all required environment variables on startup:
+
+```typescript
+// Environment validation errors
+{
+  "success": false,
+  "message": "Server configuration error",
+  "errors": [
+    "Missing required environment variable: WEBX_PAY_SECRET_KEY",
+    "WEBX_PAY_CHECKOUT_URL must be a valid URL",
+    "WEBX_PAY_PUBLIC_KEY must be a valid RSA public key",
+    "WEBX_PAY_SECRET_KEY must be at least 10 characters long"
+  ]
+}
+```
+
+### Payment Processing Errors
+```typescript
+// Payment validation errors
+{
+  "success": false,
+  "message": "Payment validation failed",
+  "errors": [
+    "First name must be at least 2 characters long",
+    "Valid email address is required",
+    "Minimum amount is 100 cents (1.00)"
+  ]
+}
+```
+
+### Webhook Processing Errors
+```typescript
+// Webhook processing errors
+{
+  "success": false,
+  "message": "Webhook processing failed",
+  "error": "Invalid webhook data: missing required fields",
+  "timestamp": "2025-07-04T15:54:49.515Z"
+}
+```
 
 ## Testing
 
@@ -392,3 +604,90 @@ timer.end();
 - Performance metrics
 - Error rates and trends
 - System health indicators
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### 1. Environment Configuration Issues
+**Problem**: "Server configuration error" with missing environment variables
+**Solution**: 
+- Check your `.env.local` file exists and contains all required variables
+- Verify environment variable names match exactly (case-sensitive)
+- Ensure RSA public key includes proper BEGIN/END headers
+- Validate URLs are properly formatted (include protocol)
+
+#### 2. Webhook Processing Issues
+**Problem**: Webhook returns "Invalid webhook data" error
+**Solution**:
+- Verify WebX Pay is sending data in the expected format
+- Check webhook endpoint is publicly accessible
+- Ensure proper content-type handling (supports both JSON and form-encoded)
+- Validate WebX Pay webhook URL configuration
+
+#### 3. Payment Redirection Issues
+**Problem**: "URL is malformed" error during redirect
+**Solution**:
+- Webhooks should return JSON responses, not redirects
+- Use absolute URLs for any redirects (include full domain)
+- Check NEXT_PUBLIC_BASE_URL is properly configured
+
+#### 4. RSA Encryption Issues
+**Problem**: Payment data encryption fails
+**Solution**:
+- Verify RSA public key format (must include BEGIN/END PUBLIC KEY headers)
+- Check key is properly formatted (no extra spaces or characters)
+- Ensure key matches WebX Pay provided public key exactly
+
+### Debug Mode
+Enable debug logging by setting log level to DEBUG:
+
+```typescript
+// In your webhook processing
+logger.debug('Raw webhook body received', {
+  bodyLength: rawBody.length,
+  contentType: request.headers.get('content-type') || 'unknown'
+});
+```
+
+### Testing Webhook Locally
+Use tools like ngrok to expose your local webhook endpoint:
+
+```bash
+# Install ngrok
+npm install -g ngrok
+
+# Expose local port 3001
+ngrok http 3001
+
+# Use the provided URL as your webhook endpoint in WebX Pay
+# Example: https://abc123.ngrok.io/api/payment/webhook
+```
+
+## 📋 Deployment Checklist
+
+### Pre-Deployment
+- [ ] All environment variables configured in production
+- [ ] Environment validation passes locally
+- [ ] RSA public key properly formatted
+- [ ] Webhook endpoint publicly accessible
+- [ ] HTTPS enabled for production domain
+- [ ] Error logging configured
+- [ ] Payment flow tested in sandbox mode
+
+### Production Deployment
+- [ ] Environment variables set in production environment
+- [ ] NEXT_PUBLIC_BASE_URL points to production domain
+- [ ] Webhook URL configured in WebX Pay dashboard
+- [ ] SSL certificate installed and working
+- [ ] Error monitoring and alerting configured
+- [ ] Payment testing completed successfully
+- [ ] Backup and recovery procedures in place
+
+### Post-Deployment
+- [ ] Monitor application logs for errors
+- [ ] Test payment flow end-to-end
+- [ ] Verify webhook processing works correctly
+- [ ] Check payment success/failure pages
+- [ ] Monitor performance metrics
+- [ ] Set up log aggregation and monitoring
