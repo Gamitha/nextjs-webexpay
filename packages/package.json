@@ -1,0 +1,41 @@
+{
+  "name": "webx-pay-monorepo",
+  "version": "1.0.1",
+  "description": "WebX Pay integration packages for NestJS backend and Next.js frontend",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:backend": "npm run build --workspace=packages/nestjs-webx-pay",
+    "build:frontend": "npm run build --workspace=packages/nextjs-webx-pay",
+    "install:backend": "npm install --workspace=packages/nestjs-webx-pay",
+    "install:frontend": "npm install --workspace=packages/nextjs-webx-pay",
+    "clean": "rm -rf packages/*/dist && rm -rf packages/*/node_modules",
+    "prepack:backend": "npm run build:backend",
+    "prepack:frontend": "npm run build:frontend",
+    "pack:backend": "npm pack --workspace=packages/nestjs-webx-pay",
+    "pack:frontend": "npm pack --workspace=packages/nextjs-webx-pay",
+    "publish:backend": "npm publish --workspace=packages/nestjs-webx-pay",
+    "publish:frontend": "npm publish --workspace=packages/nextjs-webx-pay"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "keywords": [
+    "webx-pay",
+    "payment-gateway",
+    "nestjs",
+    "nextjs",
+    "sri-lanka",
+    "monorepo"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "your-repository-url"
+  }
+}
